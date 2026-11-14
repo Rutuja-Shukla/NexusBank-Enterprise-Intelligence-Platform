@@ -28,8 +28,15 @@ failed-login evidence survives the rejection (covered by `AuthServiceTests`).
 
 | Token | Lifetime | Storage | Notes |
 | --- | --- | --- | --- |
-| Access (JWT HS256) | 30 minutes | Console `localStorage` | Claims: `sub`, `email`, `role`, permission claims; validated `iss`, `aud`, signature, lifetime (30s skew) |
+| Access (JWT HS256) | 30 minutes | Console `localStorage` | Claims: `sub`, `email`, `role`, permission claims, `iat`, `exp`; validated `iss`, `aud`, signature, lifetime (30s skew). No `nbf`: the token is valid the moment it is issued |
 | Refresh | 7 days, rotating | Console `localStorage`; server stores only SHA-256 hash | Single use: refresh revokes the presented token and issues a new pair |
+
+Access tokens deliberately omit `nbf`. A not-before claim ties validity to the *issuing* host's
+clock: an instance running ahead produced tokens that a correctly-clocked instance rejected with
+`IDX10222` (not yet valid). Issue time is still recorded in `iat`, expiry is exact, and signature,
+issuer, audience and lifetime validation are unchanged. Authentication failures are logged with the
+rejection reason (`token_expired`, `invalid_signature`, `invalid_issuer`, `invalid_audience`, …) so a
+401 is diagnosable from production logs without logging the token.
 
 Revoking a session (`DELETE /auth/sessions/{id}`) invalidates that refresh token immediately; the
 access token expires naturally within 30 minutes. In a bank deployment access-token lifetime would be

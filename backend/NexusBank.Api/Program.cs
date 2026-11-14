@@ -114,6 +114,34 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
         options.Events = new JwtBearerEvents
         {
+            // Surface why a token was rejected (signature, issuer, audience, lifetime, malformed)
+            // without logging the token itself. Without this the 401 is opaque in production logs.
+            OnAuthenticationFailed = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("NexusBank.Authentication");
+
+                var reason = context.Exception switch
+                {
+                    SecurityTokenExpiredException => "token_expired",
+                    SecurityTokenNotYetValidException => "token_not_yet_valid",
+                    SecurityTokenInvalidSignatureException => "invalid_signature",
+                    SecurityTokenInvalidIssuerException => "invalid_issuer",
+                    SecurityTokenInvalidAudienceException => "invalid_audience",
+                    SecurityTokenMalformedException => "malformed_token",
+                    SecurityTokenException => "invalid_token",
+                    _ => "token_validation_error"
+                };
+
+                logger.LogWarning(
+                    "JWT authentication failed ({Reason}): {ExceptionType}: {Message} CorrelationId={CorrelationId}",
+                    reason,
+                    context.Exception.GetType().Name,
+                    context.Exception.Message,
+                    context.HttpContext.Items["correlationId"]);
+
+                return Task.CompletedTask;
+            },
             OnChallenge = async context =>
             {
                 context.HandleResponse();

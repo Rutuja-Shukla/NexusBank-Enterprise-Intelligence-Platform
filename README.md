@@ -271,7 +271,7 @@ Request/response contracts, filtering, paging and idempotency: [`docs/API.md`](d
 ```bash
 # backend
 cd backend
-dotnet test tests/NexusBank.Tests                 # 28 unit/service tests
+dotnet test tests/NexusBank.Tests                 # 36 unit/service tests
 dotnet test tests/NexusBank.IntegrationTests      # 14 end-to-end API tests
 
 # frontend

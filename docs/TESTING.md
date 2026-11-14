@@ -8,7 +8,7 @@ console depends on.
 
 | Suite | Project / folder | Count | Runs against |
 | --- | --- | --- | --- |
-| Backend unit and service tests | `backend/tests/NexusBank.Tests` | 28 | SQLite in-memory `NexusBankDbContext`, real BCrypt, real services, fakes for clock/identity/token issuance |
+| Backend unit and service tests | `backend/tests/NexusBank.Tests` | 36 | SQLite in-memory `NexusBankDbContext`, real BCrypt, real services, fakes for clock/identity/token issuance |
 | Backend integration tests | `backend/tests/NexusBank.IntegrationTests` | 14 | The real `Program` host via `WebApplicationFactory`, isolated SQLite file, full middleware/auth/seeding |
 | Frontend unit tests | `frontend/tests/unit` | 16 | Vitest, jsdom |
 | Frontend component tests | `frontend/tests/components` | 3 | Vitest + React Testing Library |
@@ -36,7 +36,7 @@ generation check, and both container builds.
 
 ## 3. What the backend unit tests prove
 
-`NexusBank.Tests` — 28 tests:
+`NexusBank.Tests` — 36 tests:
 
 - **Password hashing** (`PasswordHasherTests`): unique salts, correct verification, rejection of
   wrong passwords and malformed stored hashes.
@@ -55,6 +55,11 @@ generation check, and both container builds.
 - **SQLite date mapping** (`SqliteDateRoundTripTests`): `DateTimeOffset` round-trips through the
   SQLite provider and range predicates work — the regression guard for the dev-database issue found
   while running the app.
+- **JWT issuance and validation** (`JwtTokenServiceTests`): a new token is valid immediately and
+  carries no future `nbf`; `iat` equals the issue instant and `exp` is exactly 30 minutes later; a
+  token minted by a host whose clock runs 38 minutes fast is still accepted by a correctly-clocked
+  validator (the regression for the production 401); expired tokens, wrong signatures, wrong issuer,
+  wrong audience and tampered payloads are all rejected with the expected IdentityModel exception.
 
 ## 4. What the integration tests prove
 

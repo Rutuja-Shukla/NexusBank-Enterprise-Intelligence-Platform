@@ -35,11 +35,15 @@ public sealed class JwtTokenService : ITokenService
 
     public AccessToken CreateAccessToken(User user, IEnumerable<string> permissions)
     {
+        // One UTC instant drives iat and exp. DateTimeOffset.UtcNow is timezone-independent,
+        // so a host configured with a non-UTC TZ cannot shift the token window.
         var now = _clock.UtcNow;
         var expires = now.AddMinutes(_options.AccessTokenMinutes);
 
         var claims = new List<Claim>
         {
+            // Record issue time explicitly; JwtSecurityToken only emits iat when asked.
+            new(JwtRegisteredClaimNames.Iat, EpochTime.GetIntDate(now.UtcDateTime).ToString(), ClaimValueTypes.Integer64),
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
@@ -54,11 +58,15 @@ public sealed class JwtTokenService : ITokenService
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey)),
             SecurityAlgorithms.HmacSha256);
 
+        // No nbf claim: an access token is valid the moment it is issued. Emitting nbf tied the
+        // token to the issuing host's clock, and a host whose clock ran ahead produced tokens a
+        // correctly-clocked instance rejected as "not yet valid" (IDX10222). Expiry, signature,
+        // issuer and audience validation are unchanged and still enforced.
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,
             audience: _options.Audience,
             claims: claims,
-            notBefore: now.UtcDateTime,
+            notBefore: null,
             expires: expires.UtcDateTime,
             signingCredentials: credentials);
 
