@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#15171C" />
+    <meta
+      name="description"
+      content="NexusBank — enterprise banking integration platform for managing integrations, payments, events and operational health."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>NexusBank · Integration Platform</title>
+    <script>
+      // Apply the persisted theme before paint to avoid a flash of the wrong palette.
+      (function () {
+        try {
+          var stored = localStorage.getItem('nexusbank.theme');
+          var system = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          var theme = stored === 'light' || stored === 'dark' ? stored : system;
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

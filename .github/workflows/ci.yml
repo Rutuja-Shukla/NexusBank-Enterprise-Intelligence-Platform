@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  NODE_VERSION: "22"
+
+jobs:
+  backend:
+    name: Backend build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore NexusBank.sln
+
+      - name: Build (warnings are not ignored)
+        run: dotnet build NexusBank.sln --configuration Release --no-restore
+
+      - name: Unit tests
+        run: dotnet test tests/NexusBank.Tests/NexusBank.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=unit.trx" --results-directory TestResults
+
+      - name: Integration tests
+        run: dotnet test tests/NexusBank.IntegrationTests/NexusBank.IntegrationTests.csproj --configuration Release --no-build --logger "trx;LogFileName=integration.trx" --results-directory TestResults
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+
+      - name: Verify SQL Server migration script generates
+        run: |
+          dotnet tool install --global dotnet-ef --version 8.0.11
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef migrations script --idempotent \
+            --project NexusBank.Infrastructure \
+            --startup-project NexusBank.Api \
+            --output /tmp/nexusbank-migration.sql
+          test -s /tmp/nexusbank-migration.sql
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: backend/TestResults
+
+  frontend:
+    name: Frontend build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Unit and component tests
+        run: npm test
+
+  containers:
+    name: Container images build
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -t nexusbank-api:ci ./backend
+
+      - name: Build console image
+        run: docker build -t nexusbank-web:ci ./frontend

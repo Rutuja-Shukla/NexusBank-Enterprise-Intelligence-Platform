@@ -1,0 +1,22 @@
+# Starter Prometheus configuration for the NexusBank API.
+# Run alongside the Compose stack or point `targets` at the Container Apps FQDN.
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: nexusbank-api
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+          - api:8080
+        labels:
+          environment: local
+          service: nexusbank-api
+
+  # Prometheus' own metrics, useful when validating a new deployment.
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090

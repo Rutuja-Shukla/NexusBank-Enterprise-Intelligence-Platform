@@ -1,0 +1,36 @@
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+.vs/
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+.vite/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pfx
+*.pem
+
+# Tooling
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

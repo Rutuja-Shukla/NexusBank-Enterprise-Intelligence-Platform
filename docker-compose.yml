@@ -1,0 +1,116 @@
+# NexusBank local stack: SQL Server, Redis, Kafka, API and console.
+# Copy .env.example to .env and set MSSQL_SA_PASSWORD / JWT_SIGNING_KEY before starting.
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: nexusbank-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env}"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [nexusbank]
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexusbank-redis
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [nexusbank]
+
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: nexusbank-kafka
+    environment:
+      KAFKA_CFG_NODE_ID: "0"
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_NUM_PARTITIONS: "3"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka-data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks: [nexusbank]
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nexusbank-api
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:8080"
+      Database__Provider: "SqlServer"
+      Database__AutoMigrate: "true"
+      Database__AutoSeed: "true"
+      ConnectionStrings__SqlServer: "Server=sqlserver,1433;Database=NexusBank;User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;Encrypt=False"
+      Jwt__SigningKey: "${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY in .env}"
+      Jwt__Issuer: "nexusbank-api"
+      Jwt__Audience: "nexusbank-console"
+      Redis__Enabled: "true"
+      Redis__Configuration: "redis:6379"
+      Kafka__Enabled: "true"
+      Kafka__BootstrapServers: "kafka:9092"
+      Cors__AllowedOrigins__0: "http://localhost:8088"
+      OpenTelemetry__OtlpEndpoint: "${OTLP_ENDPOINT:-}"
+    ports:
+      - "8080:8080"
+    networks: [nexusbank]
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nexusbank-web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8088:80"
+    networks: [nexusbank]
+
+volumes:
+  sqlserver-data:
+  redis-data:
+  kafka-data:
+
+networks:
+  nexusbank:
+    driver: bridge
