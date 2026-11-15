@@ -79,7 +79,7 @@ erDiagram
 | --- | --- | --- |
 | `Customers` | Synthetic retail and business customers | unique `CustomerNumber`; `Segment`, `KycStatus`, `IsActive` |
 | `Accounts` | Accounts held by customers | unique `AccountNumber`; `Currency`, `Balance`, `AvailableBalance`, `Status` |
-| `Payments` | Payment instructions | indexes on `Reference`, `CreatedAt`, `Status`; `IdempotencyKey`, `CorrelationId`, `RiskScore`, `ProcessingDurationMs`, `FailureCode`, `FailureReason` |
+| `Payments` | Payment instructions | unique `Reference`; indexes on `CreatedAt`, `Status`, `(IdempotencyKey, CreatedAt)`; `CorrelationId`, `RiskScore`, `ProcessingDurationMs`, `FailureCode`, `FailureReason` |
 | `PaymentEvents` | Ordered journey steps | index `(PaymentId, Sequence)`; `Step`, `Status`, `ServiceName`, `Timestamp`, `DurationMs`, `ErrorDetail` |
 | `LedgerEntries` | Simplified double-entry postings | index `PaymentId`; `EntryType` (Debit/Credit), `AccountNumber`, `Amount`, `Currency` |
 
@@ -88,11 +88,11 @@ erDiagram
 | Table | Purpose | Key columns / indexes |
 | --- | --- | --- |
 | `EventTopics` | Topic registry | unique `Name`; `Partitions`, `RetentionHours`, `OwnerTeam` |
-| `KafkaEvents` | Produced/consumed messages with payload and failure detail | indexes on `Topic`, `ProducedAt`, `Status`; `IsSimulated`, `RetryCount`, `Error`, `ConsumerGroup` |
+| `KafkaEvents` | Produced/consumed messages with payload and failure detail | indexes on `ProducedAt` and `Status`; `TopicId` FK; `IsSimulated`, `RetryCount`, `ErrorMessage`, `ConsumerGroupId` |
 | `ConsumerGroups` | Group health | `GroupId`, `Topic`, `State`, `Members`, `Lag`, `CommittedOffset`, `LastHeartbeatAt` |
 | `Incidents` | Operational incidents | unique `Reference`; `Severity`, `Status`, `Category`, `Team`, `Assignee`, `DetectedAt`, `AcknowledgedAt`, `ResolvedAt`, `RootCause`, `CorrectiveActions` |
 | `IncidentActivities` | Timeline entries | index `(IncidentId, Timestamp)`; `Type`, `Detail`, `Author` |
-| `ApiRequestLogs` | Telemetry source of truth | indexes on `Timestamp` and `Path`; `Method`, `StatusCode`, `DurationMs`, `CorrelationId`, `ServiceName` |
+| `ApiRequestLogs` | Telemetry source of truth | indexes on `Timestamp` and `(StatusCode, Timestamp)`; `Method`, `Path`, `DurationMs`, `CorrelationId`, `TraceId`, `ClientIp`, `UserId`, `ServiceName` |
 | `OutboxMessages` | Transactional outbox | index `(ProcessedAt, NextAttemptAt)`; `Type`, `Topic`, `Payload`, `Attempts`, `Error` |
 | `IdempotencyRecords` | Stored responses for replay | unique `(Scope, Key)`; `RequestHash`, `StatusCode`, `ResponseJson`, `ExpiresAt` |
 
@@ -149,9 +149,15 @@ again. In Docker, `docker compose down -v` removes the SQL Server volume.
 
 ## 7. Retention and growth
 
-`TelemetryRetentionWorker` trims `ApiRequestLogs` and `IntegrationHealthSamples` beyond their
-retention window so a long-running demo does not grow without bound. `IdempotencyRecords` expire
-after 24 hours; `RefreshTokens` expire after 7 days or when revoked. Audit records are retained.
+`TelemetryRetentionWorker` runs every 6 hours and deletes:
+
+- `ApiRequestLogs` older than **7 days** (the only telemetry table it trims —
+  `IntegrationHealthSamples` and `KafkaEvents` are **not** trimmed today, which is a documented growth gap);
+- expired `IdempotencyRecords` (24-hour lifetime);
+- `RefreshTokens` 30 days past expiry or revocation (tokens themselves expire after 7 days);
+- processed `OutboxMessages` older than 7 days.
+
+Audit records are never deleted by the application.
 
 For a production-scale estate the next steps would be table partitioning on `ApiRequestLogs` by
 month, a columnstore index for analytics, and moving telemetry to a time-series store — see
