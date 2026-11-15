@@ -1,9 +1,12 @@
-
 {
   "rewrites": [
     {
       "source": "/api/:path*",
       "destination": "https://nexusbank-api-w53j.onrender.com/api/:path*"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
   ]
 }
